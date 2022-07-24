@@ -22,8 +22,10 @@ DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.2",
 
 VALIDATE_COMPONENT_FILENAME("foo_vis_projectM.dll");
 
-static const GUID guid_cfg_preset_lock = { 0xe5be745e, 0xab65, 0x4b69, { 0xa1, 0xf3, 0x1e, 0xfb, 0x8, 0xff, 0x4e, 0xcf } };
+static const GUID guid_cfg_preset_lock = { 0xe5be745e, 0xab65, 0x4b69, { 0xa1, 0xf3, 0x1e, 0xfb, 0x08, 0xff, 0x4e, 0xcf } };
 static cfg_bool cfg_preset_lock(guid_cfg_preset_lock, false);
+static const GUID guid_cfg_preset_name = { 0x186c5741, 0x701e, 0x4f2c, { 0xb4, 0x41, 0xe5, 0x57, 0x5c, 0x18, 0xb0, 0xa8 } };
+static cfg_string cfg_preset_name(guid_cfg_preset_name, "");
 
 class ui_element_instance_projectM : public ui_element_instance, public CWindowImpl<ui_element_instance_projectM>
 {
@@ -66,7 +68,10 @@ private:
 	void AddPCM();
 
 	static VOID CALLBACK TimerRoutine(PVOID lpParam, BOOLEAN TimerOrWaitFired);
+	static void PresetSwitchedCallback(bool is_hard_cut, unsigned int index, void* user_data);
+
 	void OnTimer();
+	void OnPresetSwitched(bool is_hard_cut, unsigned int index);
 
 private:
 	visualisation_stream_v2::ptr m_vis_stream;
@@ -158,11 +163,21 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 	settings.preset_url = const_cast<char*>(preset_url.c_str());
 	// init with settings
 	m_projectM = projectm_create_settings(&settings, PROJECTM_FLAG_NONE);
-	projectm_select_random_preset(m_projectM, true);
-	if(cfg_preset_lock)
+	projectm_set_preset_switched_event_callback(m_projectM, PresetSwitchedCallback, this);
+	bool select_random_preset = true;
+	if(!cfg_preset_name.isEmpty())
 	{
-		projectm_lock_preset(m_projectM, true);
+		auto idx = projectm_get_preset_index(m_projectM, cfg_preset_name.c_str());
+		if(idx > 0)
+		{
+			projectm_select_preset(m_projectM, idx, true);
+			select_random_preset = false;
+		}
 	}
+	if(select_random_preset)
+		projectm_select_random_preset(m_projectM, true);
+	if(cfg_preset_lock)
+		projectm_lock_preset(m_projectM, true);
 
 	VsyncGL(true);
 
@@ -201,6 +216,19 @@ VOID CALLBACK ui_element_instance_projectM::TimerRoutine(
 {
 	auto ui = (ui_element_instance_projectM *)lpParam;
 	ui->OnTimer();
+}
+
+void ui_element_instance_projectM::OnPresetSwitched(bool is_hard_cut, unsigned int index)
+{
+	const char* name = projectm_get_preset_name(m_projectM, index);
+	cfg_preset_name = name;
+	projectm_free_string(name);
+}
+
+void ui_element_instance_projectM::PresetSwitchedCallback(bool is_hard_cut, unsigned int index, void* user_data)
+{
+	auto ui = (ui_element_instance_projectM*)user_data;
+	ui->OnPresetSwitched(is_hard_cut, index);
 }
 
 void ui_element_instance_projectM::OnPaint(CDCHandle)
