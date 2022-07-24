@@ -9,13 +9,14 @@
 #undef UNICODE
 
 #include <libprojectM/projectM.h>
+#include <GL/glew.h>
 
 #include <memory>
 
 DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.2",
 "projectM - The most advanced open-source music visualizer\n"
 "Copyright (C) 2003 - 2022 projectM Team\n"
-"foobar2000 plugin by djdron (C) 2022.\n\n"
+"foobar2000 plugin by djdron (C) 2020 - 2022.\n\n"
 
 "Distributed under the terms of GNU LGPL v2.1\n"
 "Source code can be obtained from:\n"
@@ -214,12 +215,12 @@ void ui_element_instance_projectM::OnPaint(CDCHandle)
 	if(!m_projectM || !m_GLrc) return;
 	wglMakeCurrent(GetDC(), m_GLrc);
 
-//	glClearColor(0.0, 0.0, 0.0, 0.0);
-//	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glClearColor(0.0, 0.0, 0.0, 0.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	projectm_render_frame(m_projectM);
 
-//	glFlush();
+	glFlush();
 
 	SwapBuffers(GetDC());
 
