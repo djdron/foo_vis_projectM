@@ -5,13 +5,9 @@
 #include <libPPUI/win32_op.h>
 #include <helpers/BumpableElem.h>
 
-#undef _UNICODE
-#undef UNICODE
-
 #include <libprojectM/projectM.h>
 #include <GL/glew.h>
 
-#include <memory>
 
 DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.2",
 "projectM - The most advanced open-source music visualizer\n"
@@ -26,6 +22,8 @@ DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.2",
 
 VALIDATE_COMPONENT_FILENAME("foo_vis_projectM.dll");
 
+static const GUID guid_cfg_preset_lock = { 0xe5be745e, 0xab65, 0x4b69, { 0xa1, 0xf3, 0x1e, 0xfb, 0x8, 0xff, 0x4e, 0xcf } };
+static cfg_bool cfg_preset_lock(guid_cfg_preset_lock, false);
 
 class ui_element_instance_projectM : public ui_element_instance, public CWindowImpl<ui_element_instance_projectM>
 {
@@ -39,10 +37,10 @@ public:
 	BEGIN_MSG_MAP_EX(ui_element_instance_projectM)
 		MSG_WM_CREATE(OnCreate)
 		MSG_WM_DESTROY(OnDestroy)
-		MSG_WM_RBUTTONDOWN(OnRButtonDown)
 		MSG_WM_LBUTTONDBLCLK(OnLButtonDblClk)
 		MSG_WM_PAINT(OnPaint)
 		MSG_WM_SIZE(OnSize)
+		MSG_WM_CONTEXTMENU(OnContextMenu)
 	END_MSG_MAP()
 
 	HWND get_wnd() { return *this; }
@@ -60,10 +58,10 @@ public:
 private:
 	LRESULT OnCreate(LPCREATESTRUCT cs);
 	void OnDestroy();
-	void OnRButtonDown(UINT nFlags, CPoint point);
 	void OnLButtonDblClk(UINT nFlags, CPoint point) { static_api_ptr_t<ui_element_common_methods_v2>()->toggle_fullscreen(g_get_guid(), core_api::get_main_window()); }
 	void OnPaint(CDCHandle);
 	void OnSize(UINT nType, CSize size);
+	void OnContextMenu(CWindow wnd, CPoint point);
 
 	void AddPCM();
 
@@ -149,7 +147,7 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 	settings.mesh_y = int(settings.mesh_x * heightWidthRatio);
 	settings.fps = 60;
 	settings.soft_cut_duration = 3; // seconds
-	settings.preset_duration = 30; // seconds
+	settings.preset_duration = 20; // seconds
 	settings.hard_cut_enabled = true;
 	settings.hard_cut_duration = 20;
 	settings.hard_cut_sensitivity = 1.0;
@@ -161,6 +159,10 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 	// init with settings
 	m_projectM = projectm_create_settings(&settings, PROJECTM_FLAG_NONE);
 	projectm_select_random_preset(m_projectM, true);
+	if(cfg_preset_lock)
+	{
+		projectm_lock_preset(m_projectM, true);
+	}
 
 	VsyncGL(true);
 
@@ -201,15 +203,6 @@ VOID CALLBACK ui_element_instance_projectM::TimerRoutine(
 	ui->OnTimer();
 }
 
-void ui_element_instance_projectM::OnRButtonDown(UINT nFlags, CPoint point)
-{
-	if(m_projectM && m_GLrc)
-	{
-		wglMakeCurrent(GetDC(), m_GLrc);
-		projectm_select_random_preset(m_projectM, true);
-	}
-}
-
 void ui_element_instance_projectM::OnPaint(CDCHandle)
 {
 	if(!m_projectM || !m_GLrc) return;
@@ -239,6 +232,59 @@ void ui_element_instance_projectM::OnSize(UINT nType, CSize size)
 		wglMakeCurrent(GetDC(), m_GLrc);
 		projectm_set_window_size(m_projectM, size.cx, size.cy);
 //		console::formatter() << "projectM: OnSize " << size.cx << ", " << size.cy;
+	}
+}
+void ui_element_instance_projectM::OnContextMenu(CWindow wnd, CPoint point)
+{
+	if(point == CPoint(-1, -1))
+	{
+		CRect rc;
+		WIN32_OP(wnd.GetWindowRect(&rc));
+		point = rc.CenterPoint();
+	}
+	CMenu menu;
+	WIN32_OP(menu.CreatePopupMenu());
+	enum { ID_FULLSCREEN = 1, ID_PRESET, ID_PRESET_LOCK, ID_PRESET_NEXT, ID_PRESET_PREVIOUS, ID_PRESET_RANDOM };
+	menu.AppendMenu(MF_STRING, ID_FULLSCREEN, L"Toggle Full-Screen Mode");
+	menu.AppendMenu(MF_SEPARATOR);
+
+	CMenu menu_preset;
+	WIN32_OP(menu_preset.CreatePopupMenu());
+	menu_preset.AppendMenu(MF_STRING|(cfg_preset_lock ? MF_CHECKED : 0), ID_PRESET_LOCK, L"Lock Current");
+	menu_preset.AppendMenu(MF_STRING, ID_PRESET_NEXT, L"Next");
+	menu_preset.AppendMenu(MF_STRING, ID_PRESET_PREVIOUS, L"Previous");
+	menu_preset.AppendMenu(MF_STRING, ID_PRESET_RANDOM, L"Random");
+
+	menu.AppendMenu(MF_STRING, menu_preset, L"Preset");
+
+	CMenuDescriptionMap descriptions(*this);
+	descriptions.Set(ID_FULLSCREEN, "Toggles full-screen mode.");
+	descriptions.Set(ID_PRESET_LOCK, "Lock the current preset.");
+	descriptions.Set(ID_PRESET_NEXT, "Switch to next preset (without shuffle).");
+	descriptions.Set(ID_PRESET_PREVIOUS, "Switch to previous preset (without shuffle).");
+	descriptions.Set(ID_PRESET_RANDOM, "Switch to random preset.");
+
+	menu.SetMenuDefaultItem(ID_FULLSCREEN);
+
+	auto cmd = menu.TrackPopupMenuEx(TPM_RIGHTBUTTON|TPM_NONOTIFY|TPM_RETURNCMD, point.x, point.y, descriptions, NULL);
+	switch(cmd)
+	{
+	case ID_FULLSCREEN:
+		static_api_ptr_t<ui_element_common_methods_v2>()->toggle_fullscreen(g_get_guid(), core_api::get_main_window());
+		break;
+	case ID_PRESET_LOCK:
+		cfg_preset_lock = !cfg_preset_lock;
+		projectm_lock_preset(m_projectM, cfg_preset_lock);
+		break;
+	case ID_PRESET_NEXT:
+		projectm_select_next_preset(m_projectM, true);
+		break;
+	case ID_PRESET_PREVIOUS:
+		projectm_select_previous_preset(m_projectM, true);
+		break;
+	case ID_PRESET_RANDOM:
+		projectm_select_random_preset(m_projectM, true);
+		break;
 	}
 }
 
