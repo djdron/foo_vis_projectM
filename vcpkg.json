@@ -1,0 +1,7 @@
+{
+	"name": "foo-vis-projectm",
+	"version-string": "0.0.2-dev",
+	"dependencies": [
+		"glew"
+	]
+}
