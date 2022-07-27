@@ -22,10 +22,15 @@ DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.2",
 
 VALIDATE_COMPONENT_FILENAME("foo_vis_projectM.dll");
 
-static const GUID guid_cfg_preset_lock = { 0xe5be745e, 0xab65, 0x4b69, { 0xa1, 0xf3, 0x1e, 0xfb, 0x08, 0xff, 0x4e, 0xcf } };
+static const GUID guid_cfg_preset_lock		= { 0xe5be745e, 0xab65, 0x4b69, { 0xa1, 0xf3, 0x1e, 0xfb, 0x08, 0xff, 0x4e, 0xcf } };
+static const GUID guid_cfg_preset_shuffle	= { 0x659c6787, 0x97bb, 0x485b, { 0xa0, 0xfc, 0x45, 0xfb, 0x12, 0xb7, 0x3a, 0xa0 } };
+static const GUID guid_cfg_preset_name		= { 0x186c5741, 0x701e, 0x4f2c, { 0xb4, 0x41, 0xe5, 0x57, 0x5c, 0x18, 0xb0, 0xa8 } };
+static const GUID guid_cfg_preset_duration	= { 0x48d9b7f5, 0x4446, 0x4ab7, { 0xb8, 0x71, 0xef, 0xc7, 0x59, 0x43, 0xb9, 0xcd } };
+
 static cfg_bool cfg_preset_lock(guid_cfg_preset_lock, false);
-static const GUID guid_cfg_preset_name = { 0x186c5741, 0x701e, 0x4f2c, { 0xb4, 0x41, 0xe5, 0x57, 0x5c, 0x18, 0xb0, 0xa8 } };
+static cfg_bool cfg_preset_shuffle(guid_cfg_preset_shuffle, true);
 static cfg_string cfg_preset_name(guid_cfg_preset_name, "");
+static cfg_int cfg_preset_duration(guid_cfg_preset_duration, 20);
 
 class ui_element_instance_projectM : public ui_element_instance, public CWindowImpl<ui_element_instance_projectM>
 {
@@ -134,7 +139,7 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 
 	std::string base_path = core_api::get_my_full_path();
 	std::string::size_type t = base_path.rfind('\\');
-	if(t != std::string::npos) base_path.erase(t + 1);
+	if(t != std::string::npos) base_path.erase(t);
 
 	RECT r;
 	GetClientRect(&r);
@@ -152,15 +157,16 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 	settings.mesh_y = int(settings.mesh_x * heightWidthRatio);
 	settings.fps = 60;
 	settings.soft_cut_duration = 3; // seconds
-	settings.preset_duration = 20; // seconds
+	settings.preset_duration = cfg_preset_duration; // seconds
 	settings.hard_cut_enabled = true;
 	settings.hard_cut_duration = 20;
 	settings.hard_cut_sensitivity = 1.0;
 	settings.beat_sensitivity = 1.0;
 	settings.aspect_correction = true;
-	settings.shuffle_enabled = true;
-	std::string preset_url = base_path + "presets";
+	settings.shuffle_enabled = cfg_preset_shuffle;
+	std::string preset_url = base_path + "/presets";
 	settings.preset_url = const_cast<char*>(preset_url.c_str());
+	settings.data_dir = const_cast<char*>(base_path.c_str());
 	// init with settings
 	m_projectM = projectm_create_settings(&settings, PROJECTM_FLAG_NONE);
 	projectm_set_preset_switched_event_callback(m_projectM, PresetSwitchedCallback, this);
@@ -272,25 +278,56 @@ void ui_element_instance_projectM::OnContextMenu(CWindow wnd, CPoint point)
 	}
 	CMenu menu;
 	WIN32_OP(menu.CreatePopupMenu());
-	enum { ID_FULLSCREEN = 1, ID_PRESET, ID_PRESET_LOCK, ID_PRESET_NEXT, ID_PRESET_PREVIOUS, ID_PRESET_RANDOM };
+	enum ui_menu_id
+	{
+		ID_FULLSCREEN = 1,
+		ID_PRESET_LOCK, ID_PRESET_SHUFFLE, ID_PRESET_NEXT, ID_PRESET_PREVIOUS, ID_PRESET_RANDOM,
+		ID_DURATION_10, ID_DURATION_20, ID_DURATION_30, ID_DURATION_45, ID_DURATION_60
+	};
 	menu.AppendMenu(MF_STRING, ID_FULLSCREEN, L"Toggle Full-Screen Mode");
 	menu.AppendMenu(MF_SEPARATOR);
 
-	CMenu menu_preset;
-	WIN32_OP(menu_preset.CreatePopupMenu());
-	menu_preset.AppendMenu(MF_STRING|(cfg_preset_lock ? MF_CHECKED : 0), ID_PRESET_LOCK, L"Lock Current");
-	menu_preset.AppendMenu(MF_STRING, ID_PRESET_NEXT, L"Next");
-	menu_preset.AppendMenu(MF_STRING, ID_PRESET_PREVIOUS, L"Previous");
-	menu_preset.AppendMenu(MF_STRING, ID_PRESET_RANDOM, L"Random");
+	menu.AppendMenu(MF_STRING|(cfg_preset_lock ? MF_CHECKED : 0), ID_PRESET_LOCK, L"Lock Current Preset");
+	menu.AppendMenu(MF_STRING|(cfg_preset_shuffle ? MF_CHECKED : 0), ID_PRESET_SHUFFLE, L"Shuffle Presets");
+	menu.AppendMenu(MF_STRING, ID_PRESET_NEXT, L"Next Preset");
+	menu.AppendMenu(MF_STRING, ID_PRESET_PREVIOUS, L"Previous Preset");
+	menu.AppendMenu(MF_STRING, ID_PRESET_RANDOM, L"Random Preset");
 
-	menu.AppendMenu(MF_STRING, menu_preset, L"Preset");
+	CMenu menu_duration;
+	WIN32_OP(menu_duration.CreatePopupMenu());
+	menu_duration.AppendMenu(MF_STRING, ID_DURATION_10, L"10");
+	menu_duration.AppendMenu(MF_STRING, ID_DURATION_20, L"20");
+	menu_duration.AppendMenu(MF_STRING, ID_DURATION_30, L"30");
+	menu_duration.AppendMenu(MF_STRING, ID_DURATION_45, L"45");
+	menu_duration.AppendMenu(MF_STRING, ID_DURATION_60, L"60");
+	auto DurationToId = [](int duration)
+	{
+		switch(duration)
+		{
+		case 10: return ID_DURATION_10;
+		case 20: return ID_DURATION_20;
+		case 30: return ID_DURATION_30;
+		case 45: return ID_DURATION_45;
+		case 60: return ID_DURATION_60;
+		}
+		return ID_DURATION_20;
+	};
+	menu_duration.CheckMenuRadioItem(ID_DURATION_10, ID_DURATION_60, DurationToId(cfg_preset_duration), MF_BYCOMMAND);
+
+	menu.AppendMenu(MF_STRING, menu_duration, L"Preset Duration");
 
 	CMenuDescriptionMap descriptions(*this);
 	descriptions.Set(ID_FULLSCREEN, "Toggles full-screen mode.");
 	descriptions.Set(ID_PRESET_LOCK, "Lock the current preset.");
+	descriptions.Set(ID_PRESET_SHUFFLE, "Shuffle presets.");
 	descriptions.Set(ID_PRESET_NEXT, "Switch to next preset (without shuffle).");
 	descriptions.Set(ID_PRESET_PREVIOUS, "Switch to previous preset (without shuffle).");
 	descriptions.Set(ID_PRESET_RANDOM, "Switch to random preset.");
+	descriptions.Set(ID_DURATION_10, "Duration 10 seconds.");
+	descriptions.Set(ID_DURATION_20, "Duration 20 seconds.");
+	descriptions.Set(ID_DURATION_30, "Duration 30 seconds.");
+	descriptions.Set(ID_DURATION_45, "Duration 45 seconds.");
+	descriptions.Set(ID_DURATION_60, "Duration 60 seconds.");
 
 	menu.SetMenuDefaultItem(ID_FULLSCREEN);
 
@@ -304,6 +341,10 @@ void ui_element_instance_projectM::OnContextMenu(CWindow wnd, CPoint point)
 		cfg_preset_lock = !cfg_preset_lock;
 		projectm_lock_preset(m_projectM, cfg_preset_lock);
 		break;
+	case ID_PRESET_SHUFFLE:
+		cfg_preset_shuffle = !cfg_preset_shuffle;
+		projectm_set_shuffle_enabled(m_projectM, cfg_preset_shuffle);
+		break;
 	case ID_PRESET_NEXT:
 		projectm_select_next_preset(m_projectM, true);
 		break;
@@ -312,6 +353,26 @@ void ui_element_instance_projectM::OnContextMenu(CWindow wnd, CPoint point)
 		break;
 	case ID_PRESET_RANDOM:
 		projectm_select_random_preset(m_projectM, true);
+		break;
+	case ID_DURATION_10:
+		cfg_preset_duration = 10;
+		projectm_set_preset_duration(m_projectM, cfg_preset_duration);
+		break;
+	case ID_DURATION_20:
+		cfg_preset_duration = 20;
+		projectm_set_preset_duration(m_projectM, cfg_preset_duration);
+		break;
+	case ID_DURATION_30:
+		cfg_preset_duration = 30;
+		projectm_set_preset_duration(m_projectM, cfg_preset_duration);
+		break;
+	case ID_DURATION_45:
+		cfg_preset_duration = 45;
+		projectm_set_preset_duration(m_projectM, cfg_preset_duration);
+		break;
+	case ID_DURATION_60:
+		cfg_preset_duration = 60;
+		projectm_set_preset_duration(m_projectM, cfg_preset_duration);
 		break;
 	}
 }
