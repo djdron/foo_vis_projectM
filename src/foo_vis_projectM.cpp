@@ -78,6 +78,16 @@ private:
 	void OnTimer();
 	void OnPresetSwitched(bool is_hard_cut, unsigned int index);
 
+	bool SetupGLContext()
+	{
+		if(m_projectM && m_GLrc)
+		{
+			wglMakeCurrent(GetDC(), m_GLrc);
+			return true;
+		}
+		return false;
+	}
+
 private:
 	visualisation_stream_v2::ptr m_vis_stream;
 	projectm* m_projectM = NULL;
@@ -193,14 +203,18 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 }
 void ui_element_instance_projectM::OnDestroy()
 {
-	wglMakeCurrent(NULL, NULL);
-	wglDeleteContext(m_GLrc);
-	m_GLrc = NULL;
 	m_vis_stream.release();
+	SetupGLContext();
 	if(m_projectM)
 	{
 		projectm_destroy(m_projectM);
 		m_projectM = NULL;
+	}
+	wglMakeCurrent(NULL, NULL);
+	if(m_GLrc)
+	{
+		wglDeleteContext(m_GLrc);
+		m_GLrc = NULL;
 	}
 
 	if(m_timer)
@@ -239,17 +253,17 @@ void ui_element_instance_projectM::PresetSwitchedCallback(bool is_hard_cut, unsi
 
 void ui_element_instance_projectM::OnPaint(CDCHandle)
 {
-	if(!m_projectM || !m_GLrc) return;
-	wglMakeCurrent(GetDC(), m_GLrc);
+	if(SetupGLContext())
+	{
+		glClearColor(0.0, 0.0, 0.0, 0.0);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	glClearColor(0.0, 0.0, 0.0, 0.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		projectm_render_frame(m_projectM);
 
-	projectm_render_frame(m_projectM);
+		glFlush();
 
-	glFlush();
-
-	SwapBuffers(GetDC());
+		SwapBuffers(GetDC());
+	}
 
 	ValidateRect(NULL);
 
@@ -261,9 +275,8 @@ void ui_element_instance_projectM::OnPaint(CDCHandle)
 
 void ui_element_instance_projectM::OnSize(UINT nType, CSize size)
 {
-	if(m_projectM && m_GLrc && size.cx && size.cy)
+	if(size.cx && size.cy && SetupGLContext())
 	{
-		wglMakeCurrent(GetDC(), m_GLrc);
 		projectm_set_window_size(m_projectM, size.cx, size.cy);
 //		console::formatter() << "projectM: OnSize " << size.cx << ", " << size.cy;
 	}
@@ -346,13 +359,16 @@ void ui_element_instance_projectM::OnContextMenu(CWindow wnd, CPoint point)
 		projectm_set_shuffle_enabled(m_projectM, cfg_preset_shuffle);
 		break;
 	case ID_PRESET_NEXT:
-		projectm_select_next_preset(m_projectM, true);
+		if(SetupGLContext())
+			projectm_select_next_preset(m_projectM, true);
 		break;
 	case ID_PRESET_PREVIOUS:
-		projectm_select_previous_preset(m_projectM, true);
+		if(SetupGLContext())
+			projectm_select_previous_preset(m_projectM, true);
 		break;
 	case ID_PRESET_RANDOM:
-		projectm_select_random_preset(m_projectM, true);
+		if(SetupGLContext())
+			projectm_select_random_preset(m_projectM, true);
 		break;
 	case ID_DURATION_10:
 		cfg_preset_duration = 10;
