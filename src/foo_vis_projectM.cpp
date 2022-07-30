@@ -22,6 +22,9 @@ DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.2",
 
 VALIDATE_COMPONENT_FILENAME("foo_vis_projectM.dll");
 
+namespace
+{
+
 static const GUID guid_cfg_preset_lock		= { 0xe5be745e, 0xab65, 0x4b69, { 0xa1, 0xf3, 0x1e, 0xfb, 0x08, 0xff, 0x4e, 0xcf } };
 static const GUID guid_cfg_preset_shuffle	= { 0x659c6787, 0x97bb, 0x485b, { 0xa0, 0xfc, 0x45, 0xfb, 0x12, 0xb7, 0x3a, 0xa0 } };
 static const GUID guid_cfg_preset_name		= { 0x186c5741, 0x701e, 0x4f2c, { 0xb4, 0x41, 0xe5, 0x57, 0x5c, 0x18, 0xb0, 0xa8 } };
@@ -428,3 +431,6 @@ void ui_element_instance_projectM::AddPCM()
 
 class ui_element_projectM : public ui_element_impl_visualisation<ui_element_instance_projectM> {};
 static service_factory_single_t<ui_element_projectM> g_ui_element_projectM_factory;
+
+}
+//namespace
