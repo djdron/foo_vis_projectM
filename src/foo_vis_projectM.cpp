@@ -53,9 +53,8 @@ public:
 		MSG_WM_CONTEXTMENU(OnContextMenu)
 	END_MSG_MAP()
 
-	HWND get_wnd() { return *this; }
-	void set_configuration(ui_element_config::ptr config) { m_config = config; }
-	ui_element_config::ptr get_configuration() { return m_config; }
+	virtual void set_configuration(ui_element_config::ptr config) override { m_config = config; }
+	virtual ui_element_config::ptr get_configuration() override { return m_config; }
 	static GUID g_get_guid() {
 		static const GUID guid_myelem = { 0x489c7f0e, 0x2073, 0x442b, {0xaf, 0x4a, 0x00, 0x51, 0x99, 0x12, 0xaf, 0x70 } };
 		return guid_myelem;
