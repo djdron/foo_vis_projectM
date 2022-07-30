@@ -1,6 +1,6 @@
 {
 	"name": "foo-vis-projectm",
-	"version-string": "0.0.2-dev",
+	"version-string": "0.0.3-dev",
 	"dependencies": [
 		"glew"
 	]

@@ -9,7 +9,7 @@
 #include <GL/glew.h>
 
 
-DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.2",
+DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.3",
 "projectM - The most advanced open-source music visualizer\n"
 "Copyright (C) 2003 - 2022 projectM Team\n"
 "foobar2000 plugin by djdron (C) 2020 - 2022.\n\n"
