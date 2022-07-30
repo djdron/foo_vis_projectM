@@ -55,6 +55,18 @@ public:
 
 	virtual void set_configuration(ui_element_config::ptr config) override { m_config = config; }
 	virtual ui_element_config::ptr get_configuration() override { return m_config; }
+
+	enum ui_menu_id
+	{
+		ID_FULLSCREEN = 1,
+		ID_PRESET_LOCK, ID_PRESET_SHUFFLE, ID_PRESET_NEXT, ID_PRESET_PREVIOUS, ID_PRESET_RANDOM,
+		ID_DURATION_10, ID_DURATION_20, ID_DURATION_30, ID_DURATION_45, ID_DURATION_60
+	};
+	virtual bool edit_mode_context_menu_test(const POINT& p_point, bool p_fromkeyboard) { return true; }
+	virtual void edit_mode_context_menu_build(const POINT& p_point, bool p_fromkeyboard, HMENU p_menu, unsigned p_id_base) override { ContextMenuBuild(p_menu, p_id_base); }
+	virtual void edit_mode_context_menu_command(const POINT& p_point, bool p_fromkeyboard, unsigned p_id, unsigned p_id_base) override { ContextMenuCommand(p_id - p_id_base); }
+	virtual bool edit_mode_context_menu_get_description(unsigned p_id, unsigned p_id_base, pfc::string_base& p_out) override { return ContextMenuGetDesc(p_id - p_id_base, p_out); }
+
 	static GUID g_get_guid() {
 		static const GUID guid_myelem = { 0x489c7f0e, 0x2073, 0x442b, {0xaf, 0x4a, 0x00, 0x51, 0x99, 0x12, 0xaf, 0x70 } };
 		return guid_myelem;
@@ -89,6 +101,10 @@ private:
 		}
 		return false;
 	}
+
+	void ContextMenuBuild(HMENU p_menu, unsigned p_id_base);
+	bool ContextMenuGetDesc(int p_id, pfc::string_base& p_out);
+	void ContextMenuCommand(int cmd);
 
 private:
 	visualisation_stream_v2::ptr m_vis_stream;
@@ -285,6 +301,11 @@ void ui_element_instance_projectM::OnSize(UINT nType, CSize size)
 }
 void ui_element_instance_projectM::OnContextMenu(CWindow wnd, CPoint point)
 {
+	if(m_callback->is_edit_mode_enabled())
+	{
+		SetMsgHandled(FALSE);
+		return;
+	}
 	if(point == CPoint(-1, -1))
 	{
 		CRect rc;
@@ -293,28 +314,33 @@ void ui_element_instance_projectM::OnContextMenu(CWindow wnd, CPoint point)
 	}
 	CMenu menu;
 	WIN32_OP(menu.CreatePopupMenu());
-	enum ui_menu_id
-	{
-		ID_FULLSCREEN = 1,
-		ID_PRESET_LOCK, ID_PRESET_SHUFFLE, ID_PRESET_NEXT, ID_PRESET_PREVIOUS, ID_PRESET_RANDOM,
-		ID_DURATION_10, ID_DURATION_20, ID_DURATION_30, ID_DURATION_45, ID_DURATION_60
-	};
-	menu.AppendMenu(MF_STRING, ID_FULLSCREEN, L"Toggle Full-Screen Mode");
+	ContextMenuBuild(menu, 0);
+	menu.SetMenuDefaultItem(ID_FULLSCREEN);
+
+	CMenuSelectionReceiver_UiElement descriptions(this, 0);
+	auto cmd = menu.TrackPopupMenuEx(TPM_RIGHTBUTTON|TPM_NONOTIFY|TPM_RETURNCMD, point.x, point.y, descriptions, NULL);
+	ContextMenuCommand(cmd);
+}
+
+void ui_element_instance_projectM::ContextMenuBuild(HMENU p_menu, unsigned p_id_base)
+{
+	CMenuHandle menu(p_menu);
+	menu.AppendMenu(MF_STRING, p_id_base + ID_FULLSCREEN, L"Toggle Full-Screen Mode");
 	menu.AppendMenu(MF_SEPARATOR);
 
-	menu.AppendMenu(MF_STRING|(cfg_preset_lock ? MF_CHECKED : 0), ID_PRESET_LOCK, L"Lock Current Preset");
-	menu.AppendMenu(MF_STRING|(cfg_preset_shuffle ? MF_CHECKED : 0), ID_PRESET_SHUFFLE, L"Shuffle Presets");
-	menu.AppendMenu(MF_STRING, ID_PRESET_NEXT, L"Next Preset");
-	menu.AppendMenu(MF_STRING, ID_PRESET_PREVIOUS, L"Previous Preset");
-	menu.AppendMenu(MF_STRING, ID_PRESET_RANDOM, L"Random Preset");
+	menu.AppendMenu(MF_STRING|(cfg_preset_lock ? MF_CHECKED : 0), p_id_base + ID_PRESET_LOCK, L"Lock Current Preset");
+	menu.AppendMenu(MF_STRING|(cfg_preset_shuffle ? MF_CHECKED : 0), p_id_base + ID_PRESET_SHUFFLE, L"Shuffle Presets");
+	menu.AppendMenu(MF_STRING, p_id_base + ID_PRESET_NEXT, L"Next Preset");
+	menu.AppendMenu(MF_STRING, p_id_base + ID_PRESET_PREVIOUS, L"Previous Preset");
+	menu.AppendMenu(MF_STRING, p_id_base + ID_PRESET_RANDOM, L"Random Preset");
 
-	CMenu menu_duration;
+	CMenuHandle menu_duration;
 	WIN32_OP(menu_duration.CreatePopupMenu());
-	menu_duration.AppendMenu(MF_STRING, ID_DURATION_10, L"10");
-	menu_duration.AppendMenu(MF_STRING, ID_DURATION_20, L"20");
-	menu_duration.AppendMenu(MF_STRING, ID_DURATION_30, L"30");
-	menu_duration.AppendMenu(MF_STRING, ID_DURATION_45, L"45");
-	menu_duration.AppendMenu(MF_STRING, ID_DURATION_60, L"60");
+	menu_duration.AppendMenu(MF_STRING, p_id_base + ID_DURATION_10, L"10");
+	menu_duration.AppendMenu(MF_STRING, p_id_base + ID_DURATION_20, L"20");
+	menu_duration.AppendMenu(MF_STRING, p_id_base + ID_DURATION_30, L"30");
+	menu_duration.AppendMenu(MF_STRING, p_id_base + ID_DURATION_45, L"45");
+	menu_duration.AppendMenu(MF_STRING, p_id_base + ID_DURATION_60, L"60");
 	auto DurationToId = [](int duration)
 	{
 		switch(duration)
@@ -327,26 +353,32 @@ void ui_element_instance_projectM::OnContextMenu(CWindow wnd, CPoint point)
 		}
 		return ID_DURATION_20;
 	};
-	menu_duration.CheckMenuRadioItem(ID_DURATION_10, ID_DURATION_60, DurationToId(cfg_preset_duration), MF_BYCOMMAND);
-
+	menu_duration.CheckMenuRadioItem(p_id_base + ID_DURATION_10, p_id_base + ID_DURATION_60, p_id_base + DurationToId(cfg_preset_duration), MF_BYCOMMAND);
 	menu.AppendMenu(MF_STRING, menu_duration, L"Preset Duration");
+}
 
-	CMenuDescriptionMap descriptions(*this);
-	descriptions.Set(ID_FULLSCREEN, "Toggles full-screen mode.");
-	descriptions.Set(ID_PRESET_LOCK, "Lock the current preset.");
-	descriptions.Set(ID_PRESET_SHUFFLE, "Shuffle presets.");
-	descriptions.Set(ID_PRESET_NEXT, "Switch to next preset (without shuffle).");
-	descriptions.Set(ID_PRESET_PREVIOUS, "Switch to previous preset (without shuffle).");
-	descriptions.Set(ID_PRESET_RANDOM, "Switch to random preset.");
-	descriptions.Set(ID_DURATION_10, "Duration 10 seconds.");
-	descriptions.Set(ID_DURATION_20, "Duration 20 seconds.");
-	descriptions.Set(ID_DURATION_30, "Duration 30 seconds.");
-	descriptions.Set(ID_DURATION_45, "Duration 45 seconds.");
-	descriptions.Set(ID_DURATION_60, "Duration 60 seconds.");
+bool ui_element_instance_projectM::ContextMenuGetDesc(int p_id, pfc::string_base& p_out)
+{
+	switch(p_id)
+	{
+	case ID_FULLSCREEN:		p_out = "Toggles full-screen mode.";	break;
+	case ID_PRESET_LOCK:	p_out = "Lock the current preset.";		break;
+	case ID_PRESET_SHUFFLE:	p_out = "Shuffle presets.";				break;
+	case ID_PRESET_NEXT:	p_out = "Switch to next preset (without shuffle)."; break;
+	case ID_PRESET_PREVIOUS:p_out = "Switch to previous preset (without shuffle)."; break;
+	case ID_PRESET_RANDOM:	p_out = "Switch to random preset.";		break;
+	case ID_DURATION_10:	p_out = "Duration 10 seconds.";			break;
+	case ID_DURATION_20:	p_out = "Duration 20 seconds.";			break;
+	case ID_DURATION_30:	p_out = "Duration 30 seconds.";			break;
+	case ID_DURATION_45:	p_out = "Duration 45 seconds.";			break;
+	case ID_DURATION_60:	p_out = "Duration 60 seconds.";			break;
+	default: return false;
+	}
+	return true;
+}
 
-	menu.SetMenuDefaultItem(ID_FULLSCREEN);
-
-	auto cmd = menu.TrackPopupMenuEx(TPM_RIGHTBUTTON|TPM_NONOTIFY|TPM_RETURNCMD, point.x, point.y, descriptions, NULL);
+void ui_element_instance_projectM::ContextMenuCommand(int cmd)
+{
 	switch(cmd)
 	{
 	case ID_FULLSCREEN:
