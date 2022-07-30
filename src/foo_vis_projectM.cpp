@@ -60,7 +60,7 @@ public:
 	{
 		ID_FULLSCREEN = 1,
 		ID_PRESET_LOCK, ID_PRESET_SHUFFLE, ID_PRESET_NEXT, ID_PRESET_PREVIOUS, ID_PRESET_RANDOM,
-		ID_DURATION_10, ID_DURATION_20, ID_DURATION_30, ID_DURATION_45, ID_DURATION_60
+		ID_DURATION_5, ID_DURATION_10, ID_DURATION_20, ID_DURATION_30, ID_DURATION_45, ID_DURATION_60
 	};
 	virtual bool edit_mode_context_menu_test(const POINT& p_point, bool p_fromkeyboard) { return true; }
 	virtual void edit_mode_context_menu_build(const POINT& p_point, bool p_fromkeyboard, HMENU p_menu, unsigned p_id_base) override { ContextMenuBuild(p_menu, p_id_base); }
@@ -336,6 +336,7 @@ void ui_element_instance_projectM::ContextMenuBuild(HMENU p_menu, unsigned p_id_
 
 	CMenuHandle menu_duration;
 	WIN32_OP(menu_duration.CreatePopupMenu());
+	menu_duration.AppendMenu(MF_STRING, p_id_base + ID_DURATION_5,  L"5");
 	menu_duration.AppendMenu(MF_STRING, p_id_base + ID_DURATION_10, L"10");
 	menu_duration.AppendMenu(MF_STRING, p_id_base + ID_DURATION_20, L"20");
 	menu_duration.AppendMenu(MF_STRING, p_id_base + ID_DURATION_30, L"30");
@@ -345,6 +346,7 @@ void ui_element_instance_projectM::ContextMenuBuild(HMENU p_menu, unsigned p_id_
 	{
 		switch(duration)
 		{
+		case 5:  return ID_DURATION_5;
 		case 10: return ID_DURATION_10;
 		case 20: return ID_DURATION_20;
 		case 30: return ID_DURATION_30;
@@ -353,7 +355,7 @@ void ui_element_instance_projectM::ContextMenuBuild(HMENU p_menu, unsigned p_id_
 		}
 		return ID_DURATION_20;
 	};
-	menu_duration.CheckMenuRadioItem(p_id_base + ID_DURATION_10, p_id_base + ID_DURATION_60, p_id_base + DurationToId(cfg_preset_duration), MF_BYCOMMAND);
+	menu_duration.CheckMenuRadioItem(p_id_base + ID_DURATION_5, p_id_base + ID_DURATION_60, p_id_base + DurationToId(cfg_preset_duration), MF_BYCOMMAND);
 	menu.AppendMenu(MF_STRING, menu_duration, L"Preset Duration");
 }
 
@@ -367,6 +369,7 @@ bool ui_element_instance_projectM::ContextMenuGetDesc(int p_id, pfc::string_base
 	case ID_PRESET_NEXT:	p_out = "Switch to next preset (without shuffle)."; break;
 	case ID_PRESET_PREVIOUS:p_out = "Switch to previous preset (without shuffle)."; break;
 	case ID_PRESET_RANDOM:	p_out = "Switch to random preset.";		break;
+	case ID_DURATION_5:		p_out = "Duration 5 seconds.";			break;
 	case ID_DURATION_10:	p_out = "Duration 10 seconds.";			break;
 	case ID_DURATION_20:	p_out = "Duration 20 seconds.";			break;
 	case ID_DURATION_30:	p_out = "Duration 30 seconds.";			break;
@@ -403,6 +406,10 @@ void ui_element_instance_projectM::ContextMenuCommand(int cmd)
 	case ID_PRESET_RANDOM:
 		if(SetupGLContext())
 			projectm_select_random_preset(m_projectM, true);
+		break;
+	case ID_DURATION_5:
+		cfg_preset_duration = 5;
+		projectm_set_preset_duration(m_projectM, cfg_preset_duration);
 		break;
 	case ID_DURATION_10:
 		cfg_preset_duration = 10;
