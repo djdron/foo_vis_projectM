@@ -50,6 +50,7 @@ public:
 		MSG_WM_LBUTTONDBLCLK(OnLButtonDblClk)
 		MSG_WM_PAINT(OnPaint)
 		MSG_WM_SIZE(OnSize)
+		MSG_WM_TIMER(OnSizeTimer)
 		MSG_WM_CONTEXTMENU(OnContextMenu)
 	END_MSG_MAP()
 
@@ -79,9 +80,11 @@ public:
 private:
 	LRESULT OnCreate(LPCREATESTRUCT cs);
 	void OnDestroy();
+	void CreateProjectM(int width, int height);
 	void OnLButtonDblClk(UINT nFlags, CPoint point) { static_api_ptr_t<ui_element_common_methods_v2>()->toggle_fullscreen(g_get_guid(), core_api::get_main_window()); }
 	void OnPaint(CDCHandle);
 	void OnSize(UINT nType, CSize size);
+	void OnSizeTimer(UINT_PTR id);
 	void OnContextMenu(CWindow wnd, CPoint point);
 
 	void AddPCM();
@@ -139,42 +142,12 @@ static void VsyncGL(bool on)
 	if(si) si(on);
 }
 
-LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
+void ui_element_instance_projectM::CreateProjectM(int width, int height)
 {
-	PIXELFORMATDESCRIPTOR pfd =
-	{
-		sizeof(PIXELFORMATDESCRIPTOR), 1,
-		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER, // Flags
-		PFD_TYPE_RGBA, // The kind of framebuffer. RGBA or palette.
-		32, // Colordepth of the framebuffer.
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		24, // Number of bits for the depthbuffer
-		8,	// Number of bits for the stencilbuffer
-		0,	// Number of Aux buffers in the framebuffer.
-		PFD_MAIN_PLANE, 0, 0, 0, 0
-	};
+	assert(!m_projectM);
 
-	HDC dc = GetDC();
-	int pf = ChoosePixelFormat(dc, &pfd);
-	SetPixelFormat(dc, pf, &pfd);
-
-	m_GLrc = wglCreateContext(dc);
-	wglMakeCurrent(dc, m_GLrc);
-
-	static_api_ptr_t<visualisation_manager> vis_manager;
-	vis_manager->create_stream(m_vis_stream, 0);
-	m_vis_stream->request_backlog(0.8);
-
-	std::string base_path = core_api::get_my_full_path();
-	std::string::size_type t = base_path.rfind('\\');
-	if(t != std::string::npos) base_path.erase(t + 1);
-
-	RECT r;
-	GetClientRect(&r);
-	int width = r.right - r.left;
-	int height = r.bottom - r.top;
-	if(width < 128) width = 128;
-	if(height < 128) height = 128;
+	if(m_GLrc)
+		wglMakeCurrent(GetDC(), m_GLrc);
 
 	float heightWidthRatio = (float)height / (float)width;
 
@@ -192,6 +165,10 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 	settings.beat_sensitivity = 1.0;
 	settings.aspect_correction = true;
 	settings.shuffle_enabled = cfg_preset_shuffle;
+
+	std::string base_path = core_api::get_my_full_path();
+	std::string::size_type t = base_path.rfind('\\');
+	if(t != std::string::npos) base_path.erase(t + 1);
 	std::string data_zip = base_path + "data.zip";
 	settings.data_dir = const_cast<char*>(data_zip.c_str());
 	// init with settings
@@ -213,6 +190,32 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 		projectm_lock_preset(m_projectM, true);
 
 	VsyncGL(true);
+}
+
+LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
+{
+	PIXELFORMATDESCRIPTOR pfd =
+	{
+		sizeof(PIXELFORMATDESCRIPTOR), 1,
+		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER, // Flags
+		PFD_TYPE_RGBA, // The kind of framebuffer. RGBA or palette.
+		32, // Colordepth of the framebuffer.
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		24, // Number of bits for the depthbuffer
+		8,	// Number of bits for the stencilbuffer
+		0,	// Number of Aux buffers in the framebuffer.
+		PFD_MAIN_PLANE, 0, 0, 0, 0
+	};
+
+	HDC dc = GetDC();
+	int pf = ChoosePixelFormat(dc, &pfd);
+	SetPixelFormat(dc, pf, &pfd);
+
+	m_GLrc = wglCreateContext(dc);
+
+	static_api_ptr_t<visualisation_manager> vis_manager;
+	vis_manager->create_stream(m_vis_stream, 0);
+	m_vis_stream->request_backlog(0.8);
 
 //	console::formatter() << "projectM: OnCreate";
 
@@ -292,12 +295,40 @@ void ui_element_instance_projectM::OnPaint(CDCHandle)
 
 void ui_element_instance_projectM::OnSize(UINT nType, CSize size)
 {
-	if(size.cx && size.cy && SetupGLContext())
+	if(size.cx && size.cy)
 	{
-		projectm_set_window_size(m_projectM, size.cx, size.cy);
+		SetTimer(1, 100);
 //		console::formatter() << "projectM: OnSize " << size.cx << ", " << size.cy;
 	}
 }
+void ui_element_instance_projectM::OnSizeTimer(UINT_PTR id)
+{
+	KillTimer(1);
+
+	RECT r;
+	GetClientRect(&r);
+
+	int width = r.right - r.left;
+	int height = r.bottom - r.top;
+
+//	console::formatter() << "projectM: OnSizeTimer " << width << ", " << height;
+
+	if(!width || !height)
+		return;
+
+	if(width < 128) width = 128;
+	if(height < 128) height = 128;
+
+	if(!m_projectM)
+	{
+		CreateProjectM(width, height);
+	}
+	else if(SetupGLContext())
+	{
+		projectm_set_window_size(m_projectM, width, height);
+	}
+}
+
 void ui_element_instance_projectM::OnContextMenu(CWindow wnd, CPoint point)
 {
 	if(m_callback->is_edit_mode_enabled())
