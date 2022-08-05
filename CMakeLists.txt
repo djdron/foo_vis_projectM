@@ -24,6 +24,7 @@ endif()
 
 find_package(libprojectM REQUIRED)
 find_package(GLEW REQUIRED)
+find_package(ZLIB REQUIRED)
 
 file(GLOB SRCS_CXX "src/*.cpp")
 file(GLOB SRCS_H "src/*.h")
@@ -45,4 +46,4 @@ set(FOOBAR_SDK_LIBRARIES
 )
 
 add_library(foo_vis_projectM MODULE ${SRCS_CXX} ${SRCS_H} ${RES_RC})
-target_link_libraries(foo_vis_projectM ${FOOBAR_SDK_LIBRARIES} libprojectM::static GLEW::GLEW)
+target_link_libraries(foo_vis_projectM ${FOOBAR_SDK_LIBRARIES} libprojectM::static GLEW::GLEW ZLIB::ZLIB)

@@ -9,7 +9,7 @@
 #include <GL/glew.h>
 
 
-DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.3",
+DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.4",
 "projectM - The most advanced open-source music visualizer\n"
 "Copyright (C) 2003 - 2022 projectM Team\n"
 "foobar2000 plugin by djdron (C) 2020 - 2022.\n\n"
@@ -167,7 +167,7 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 
 	std::string base_path = core_api::get_my_full_path();
 	std::string::size_type t = base_path.rfind('\\');
-	if(t != std::string::npos) base_path.erase(t);
+	if(t != std::string::npos) base_path.erase(t + 1);
 
 	RECT r;
 	GetClientRect(&r);
@@ -192,9 +192,8 @@ LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 	settings.beat_sensitivity = 1.0;
 	settings.aspect_correction = true;
 	settings.shuffle_enabled = cfg_preset_shuffle;
-	std::string preset_url = base_path + "/presets";
-	settings.preset_url = const_cast<char*>(preset_url.c_str());
-	settings.data_dir = const_cast<char*>(base_path.c_str());
+	std::string data_zip = base_path + "data.zip";
+	settings.data_dir = const_cast<char*>(data_zip.c_str());
 	// init with settings
 	m_projectM = projectm_create_settings(&settings, PROJECTM_FLAG_NONE);
 	projectm_set_preset_switched_event_callback(m_projectM, PresetSwitchedCallback, this);
