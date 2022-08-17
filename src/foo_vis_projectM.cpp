@@ -35,6 +35,8 @@ static cfg_bool cfg_preset_shuffle(guid_cfg_preset_shuffle, true);
 static cfg_string cfg_preset_name(guid_cfg_preset_name, "");
 static cfg_int cfg_preset_duration(guid_cfg_preset_duration, 20);
 
+static bool try_fullscreen = false;
+
 class ui_element_instance_projectM : public ui_element_instance, public CWindowImpl<ui_element_instance_projectM>
 {
 public:
@@ -48,6 +50,7 @@ public:
 		MSG_WM_CREATE(OnCreate)
 		MSG_WM_DESTROY(OnDestroy)
 		MSG_WM_LBUTTONDBLCLK(OnLButtonDblClk)
+		MSG_WM_NCPAINT(OnNCPaint)
 		MSG_WM_PAINT(OnPaint)
 		MSG_WM_SIZE(OnSize)
 		MSG_WM_TIMER(OnSizeTimer)
@@ -81,7 +84,8 @@ private:
 	LRESULT OnCreate(LPCREATESTRUCT cs);
 	void OnDestroy();
 	void CreateProjectM(int width, int height);
-	void OnLButtonDblClk(UINT nFlags, CPoint point) { static_api_ptr_t<ui_element_common_methods_v2>()->toggle_fullscreen(g_get_guid(), core_api::get_main_window()); }
+	void OnLButtonDblClk(UINT nFlags, CPoint point) { ToggleFullScreen(); }
+	void OnNCPaint(CRgnHandle);
 	void OnPaint(CDCHandle);
 	void OnSize(UINT nType, CSize size);
 	void OnSizeTimer(UINT_PTR id);
@@ -94,6 +98,13 @@ private:
 
 	void OnTimer();
 	void OnPresetSwitched(bool is_hard_cut, unsigned int index);
+
+	void ToggleFullScreen()
+	{
+		try_fullscreen = true;
+		static_api_ptr_t<ui_element_common_methods_v2>()->toggle_fullscreen(g_get_guid(), core_api::get_main_window());
+		try_fullscreen = false;
+	}
 
 	bool SetupGLContext()
 	{
@@ -118,6 +129,7 @@ private:
 	HANDLE m_timerQueue = CreateTimerQueue();
 	HANDLE m_timer = NULL;
 	HANDLE m_timerDoneEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	bool is_fullscreen = try_fullscreen;
 
 protected:
 	ui_element_config::ptr m_config;
@@ -194,6 +206,13 @@ void ui_element_instance_projectM::CreateProjectM(int width, int height)
 
 LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 {
+	if(is_fullscreen)
+	{
+		// prevent OpenGL driver to switch to Exclusive Full Screen mode - we need composition for popup menu
+		// https://www.anthropicstudios.com/2021/02/20/fullscreen-exclusive-is-a-lie/
+		uAddWindowExStyle(*this, WS_EX_STATICEDGE);
+	}
+
 	PIXELFORMATDESCRIPTOR pfd =
 	{
 		sizeof(PIXELFORMATDESCRIPTOR), 1,
@@ -269,6 +288,35 @@ void ui_element_instance_projectM::PresetSwitchedCallback(bool is_hard_cut, unsi
 {
 	auto ui = (ui_element_instance_projectM*)user_data;
 	ui->OnPresetSwitched(is_hard_cut, index);
+}
+
+void ui_element_instance_projectM::OnNCPaint(CRgnHandle rgn)
+{
+	if(!is_fullscreen)
+	{
+		SetMsgHandled(FALSE);
+		return;
+	}
+	RECT rect;
+	GetWindowRect(&rect);
+	HRGN region = CreateRectRgn(rect.left, rect.top, rect.right, rect.bottom);
+	if(HDC dc = GetDCEx(region, DCX_WINDOW | DCX_CACHE | DCX_INTERSECTRGN | DCX_LOCKWINDOWUPDATE))
+	{
+		if(HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0)))
+		{
+			RECT r;
+			r.left = r.top = 0;
+			r.right = rect.right - rect.left;
+			r.bottom = rect.bottom - rect.top;
+			FillRect(dc, &r, brush);
+			DeleteObject(brush);
+		}
+		ReleaseDC(dc);
+	}
+	else
+	{
+		DeleteObject(region);
+	}
 }
 
 void ui_element_instance_projectM::OnPaint(CDCHandle)
@@ -415,7 +463,7 @@ void ui_element_instance_projectM::ContextMenuCommand(int cmd)
 	switch(cmd)
 	{
 	case ID_FULLSCREEN:
-		static_api_ptr_t<ui_element_common_methods_v2>()->toggle_fullscreen(g_get_guid(), core_api::get_main_window());
+		ToggleFullScreen();
 		break;
 	case ID_PRESET_LOCK:
 		cfg_preset_lock = !cfg_preset_lock;
