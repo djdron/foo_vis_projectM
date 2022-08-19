@@ -7,7 +7,7 @@ Its purpose in life is to read an audio input and to produce mesmerizing visuals
 
 This is [foobar2000](https://www.foobar2000.org) visualization plugin.
 
-Using [projectM](https://github.com/projectM-visualizer/projectm) source tree.
+Using [projectM](https://github.com/projectM-visualizer/projectm) source tree ([forked](https://github.com/djdron/projectm/tree/zipfs) with some improvements like access files in .zip archive).
 
 Some options added (press right mouse button to show menu).
 
