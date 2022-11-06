@@ -7,6 +7,7 @@
 
 #include <libprojectM/projectM.h>
 #include <GL/glew.h>
+#include <vector>
 
 
 DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.5",
@@ -539,10 +540,12 @@ void ui_element_instance_projectM::AddPCM()
 		m_vis_stream->make_fake_chunk_absolute(chunk, time - dt, dt);
 	t_size count = chunk.get_sample_count();
 	auto channels = chunk.get_channel_count();
+	std::vector<t_int16> data(count*channels, 0);
+	audio_math::convert_to_int16(chunk.get_data(), count*channels, data.data(), 1.0);
 	if(channels == 2)
-		projectm_pcm_add_float(m_projectM, chunk.get_data(), count, PROJECTM_STEREO);
+		projectm_pcm_add_int16(m_projectM, data.data(), count, PROJECTM_STEREO);
 	else
-		projectm_pcm_add_float(m_projectM, chunk.get_data(), count, PROJECTM_MONO);
+		projectm_pcm_add_int16(m_projectM, data.data(), count, PROJECTM_MONO);
 }
 
 class ui_element_projectM : public ui_element_impl_visualisation<ui_element_instance_projectM> {};

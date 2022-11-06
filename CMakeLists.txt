@@ -22,6 +22,14 @@ else()
 include_directories("${WTL_ROOT}/Include")
 endif()
 
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+set(ARCH "x64/")
+set(ARCH2 "-x64")
+else()
+set(ARCH "")
+set(ARCH2 "-Win32")
+endif()
+
 find_package(libprojectM REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(ZLIB REQUIRED)
@@ -31,18 +39,18 @@ file(GLOB SRCS_H "src/*.h")
 file(GLOB RES_RC "src/*.rc")
 
 set(FOOBAR_SDK_LIBRARIES
-	optimized "${FOOBAR_SDK_ROOT}/foobar2000/SDK/Release/foobar2000_SDK.lib"
-	optimized "${FOOBAR_SDK_ROOT}/foobar2000/foobar2000_component_client/Release/foobar2000_component_client.lib"
-	optimized "${FOOBAR_SDK_ROOT}/foobar2000/helpers/Release/foobar2000_sdk_helpers.lib"
-	optimized "${FOOBAR_SDK_ROOT}/foobar2000/shared/shared.lib"
-	optimized "${FOOBAR_SDK_ROOT}/pfc/Release/pfc.lib"
-	optimized "${FOOBAR_SDK_ROOT}/libPPUI/Release/libPPUI.lib"
-	debug "${FOOBAR_SDK_ROOT}/foobar2000/SDK/Debug/foobar2000_SDK.lib"
-	debug "${FOOBAR_SDK_ROOT}/foobar2000/foobar2000_component_client/Debug/foobar2000_component_client.lib"
-	debug "${FOOBAR_SDK_ROOT}/foobar2000/helpers/Debug/foobar2000_sdk_helpers.lib"
-	debug "${FOOBAR_SDK_ROOT}/foobar2000/shared/shared.lib"
-	debug "${FOOBAR_SDK_ROOT}/pfc/Debug/pfc.lib"
-	debug "${FOOBAR_SDK_ROOT}/libPPUI/Debug/libPPUI.lib"
+	optimized "${FOOBAR_SDK_ROOT}/foobar2000/SDK/${ARCH}Release/foobar2000_SDK.lib"
+	optimized "${FOOBAR_SDK_ROOT}/foobar2000/foobar2000_component_client/${ARCH}Release/foobar2000_component_client.lib"
+	optimized "${FOOBAR_SDK_ROOT}/foobar2000/helpers/${ARCH}Release/foobar2000_sdk_helpers.lib"
+	optimized "${FOOBAR_SDK_ROOT}/foobar2000/shared/shared${ARCH2}.lib"
+	optimized "${FOOBAR_SDK_ROOT}/pfc/${ARCH}Release/pfc.lib"
+	optimized "${FOOBAR_SDK_ROOT}/libPPUI/${ARCH}Release/libPPUI.lib"
+	debug "${FOOBAR_SDK_ROOT}/foobar2000/SDK/${ARCH}Debug/foobar2000_SDK.lib"
+	debug "${FOOBAR_SDK_ROOT}/foobar2000/foobar2000_component_client/${ARCH}Debug/foobar2000_component_client.lib"
+	debug "${FOOBAR_SDK_ROOT}/foobar2000/helpers/${ARCH}Debug/foobar2000_sdk_helpers.lib"
+	debug "${FOOBAR_SDK_ROOT}/foobar2000/shared/shared${ARCH2}.lib"
+	debug "${FOOBAR_SDK_ROOT}/pfc/${ARCH}Debug/pfc.lib"
+	debug "${FOOBAR_SDK_ROOT}/libPPUI/${ARCH}Debug/libPPUI.lib"
 )
 
 add_library(foo_vis_projectM MODULE ${SRCS_CXX} ${SRCS_H} ${RES_RC})
