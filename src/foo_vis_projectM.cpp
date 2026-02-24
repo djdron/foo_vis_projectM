@@ -5,9 +5,11 @@
 #include <libPPUI/win32_op.h>
 #include <helpers/BumpableElem.h>
 
-#include <libprojectM/projectM.h>
+#include <projectM-4/projectM.h>
+#include <projectM-4/playlist.h>
 #include <GL/glew.h>
 #include <vector>
+#include "zipfs.hpp"
 
 
 DECLARE_COMPONENT_VERSION("projectM visualizer", "0.0.5",
@@ -37,6 +39,20 @@ static cfg_string cfg_preset_name(guid_cfg_preset_name, "");
 static cfg_int cfg_preset_duration(guid_cfg_preset_duration, 20);
 
 static bool try_fullscreen = false;
+
+static const std::string presets_dir = "Presets/";
+static const std::string presets_ext = ".milk";
+static const std::string textures_dir = "Textures/";
+
+static const bool IsPresetFile(const std::string& full_name)
+{
+	if(full_name.length() <= presets_dir.length())
+		return false;
+	if(_strnicmp(full_name.c_str(), presets_dir.c_str(), presets_dir.length()) != 0)
+		return false;
+	auto ext_pos = full_name.rfind(presets_ext);
+	return ext_pos != std::string::npos && ext_pos == full_name.length() - presets_ext.length();
+}
 
 class ui_element_instance_projectM : public ui_element_instance, public CWindowImpl<ui_element_instance_projectM>
 {
@@ -95,10 +111,12 @@ private:
 	void AddPCM();
 
 	static VOID CALLBACK TimerRoutine(PVOID lpParam, BOOLEAN TimerOrWaitFired);
-	static void PresetSwitchedCallback(bool is_hard_cut, unsigned int index, void* user_data);
+	static bool CallbackLoadPreset(unsigned int index, const char* filename, bool hard_cut, void* user_data);
+	static void CallbackLoadTexture(const char* texture_name, projectm_texture_load_data* data, void* user_data);
 
 	void OnTimer();
-	void OnPresetSwitched(bool is_hard_cut, unsigned int index);
+	bool LoadPreset(unsigned int index, const char* filename, bool hard_cut);
+	void LoadTexture(const char* texture_name, projectm_texture_load_data* data);
 
 	void ToggleFullScreen()
 	{
@@ -123,7 +141,8 @@ private:
 
 private:
 	visualisation_stream_v2::ptr m_vis_stream;
-	projectm* m_projectM = NULL;
+	projectm_handle m_projectM = NULL;
+	projectm_playlist_handle m_playlist = NULL;
 	HGLRC m_GLrc = NULL;
 	double m_last_time = 0.0;
 
@@ -162,48 +181,67 @@ void ui_element_instance_projectM::CreateProjectM(int width, int height)
 	if(m_GLrc)
 		wglMakeCurrent(GetDC(), m_GLrc);
 
+	glewInit();
+
 	float heightWidthRatio = (float)height / (float)width;
 
-	projectm_settings settings = {};
-	settings.window_width = width;
-	settings.window_height = height;
-	settings.mesh_x = 128;
-	settings.mesh_y = int(settings.mesh_x * heightWidthRatio);
-	settings.fps = 60;
-	settings.soft_cut_duration = 3; // seconds
-	settings.preset_duration = cfg_preset_duration; // seconds
-	settings.hard_cut_enabled = true;
-	settings.hard_cut_duration = 20;
-	settings.hard_cut_sensitivity = 1.0;
-	settings.beat_sensitivity = 1.0;
-	settings.aspect_correction = true;
-	settings.shuffle_enabled = cfg_preset_shuffle;
+	m_projectM = projectm_create();
+
+	projectm_set_window_size(m_projectM, width, height);
+	projectm_set_mesh_size(m_projectM, 128, 128*heightWidthRatio);
+	projectm_set_fps(m_projectM, 60);
+	projectm_set_soft_cut_duration(m_projectM, 3);
+	projectm_set_preset_duration(m_projectM, cfg_preset_duration);
+	projectm_set_hard_cut_enabled(m_projectM, true);
+	projectm_set_hard_cut_duration(m_projectM, 20);
+	projectm_set_hard_cut_sensitivity(m_projectM, 1.0);
+	projectm_set_beat_sensitivity(m_projectM, 1.0);
+	projectm_set_aspect_correction(m_projectM, true);
+
+	m_playlist = projectm_playlist_create(m_projectM);
+	projectm_playlist_set_shuffle(m_playlist, cfg_preset_shuffle);
 
 	std::string base_path = core_api::get_my_full_path();
 	std::string::size_type t = base_path.rfind('\\');
 	if(t != std::string::npos) base_path.erase(t + 1);
 	std::string data_zip = base_path + "data.zip";
-	settings.data_dir = const_cast<char*>(data_zip.c_str());
-	// init with settings
-	m_projectM = projectm_create_settings(&settings, PROJECTM_FLAG_NONE);
-	projectm_set_preset_switched_event_callback(m_projectM, PresetSwitchedCallback, this);
-	bool select_random_preset = true;
-	if(!cfg_preset_name.isEmpty())
+	zipfs::init(data_zip);
+
+	int preset_index = -1;
+	int idx = 0;
+	std::vector<std::string> presets;
+	for(auto* f = zipfs::gotofirstfile(); f; f = zipfs::gotonextfile())
 	{
-		auto idx = projectm_get_preset_index(m_projectM, cfg_preset_name.c_str());
-		if(idx > 0)
-		{
-			projectm_select_preset(m_projectM, idx, true);
-			select_random_preset = false;
-		}
+		if(f->is_dir)
+			continue;
+		if(!IsPresetFile(f->full_name))
+			continue;
+
+		auto p = f->full_name.substr(presets_dir.length());
+		projectm_playlist_add_preset(m_playlist, p.c_str(), true);
+		if(!cfg_preset_name.isEmpty() && p == cfg_preset_name.c_str())
+			preset_index = idx;
+		++idx;
 	}
-	if(select_random_preset)
-		projectm_select_random_preset(m_projectM, true);
+
+	projectm_set_texture_load_event_callback(m_projectM, CallbackLoadTexture, this);
+	projectm_playlist_set_preset_load_event_callback(m_playlist, CallbackLoadPreset, this);
+	if(preset_index >= 0)
+	{
+		projectm_playlist_set_position(m_playlist, preset_index, true);
+	}
+	else if(presets.size())
+	{
+		std::srand(std::time(0));
+		projectm_playlist_set_position(m_playlist, std::rand() % presets.size(), true);
+	}
+
 	if(cfg_preset_lock)
-		projectm_lock_preset(m_projectM, true);
+		projectm_set_preset_locked(m_projectM, true);
 
 	VsyncGL(true);
 }
+
 
 LRESULT ui_element_instance_projectM::OnCreate(LPCREATESTRUCT cs)
 {
@@ -250,6 +288,11 @@ void ui_element_instance_projectM::OnDestroy()
 		projectm_destroy(m_projectM);
 		m_projectM = NULL;
 	}
+	if(m_playlist)
+	{
+		projectm_playlist_destroy(m_playlist);
+		m_playlist = NULL;
+	}
 	wglMakeCurrent(NULL, NULL);
 	if(m_GLrc)
 	{
@@ -261,6 +304,8 @@ void ui_element_instance_projectM::OnDestroy()
 		WaitForSingleObject(m_timerDoneEvent, INFINITE);
 	CloseHandle(m_timerDoneEvent);
 	DeleteTimerQueue(m_timerQueue);
+
+	zipfs::done();
 
 //	console::formatter() << "projectM: OnDestroy";
 }
@@ -278,17 +323,34 @@ VOID CALLBACK ui_element_instance_projectM::TimerRoutine(
 	ui->OnTimer();
 }
 
-void ui_element_instance_projectM::OnPresetSwitched(bool is_hard_cut, unsigned int index)
+bool ui_element_instance_projectM::LoadPreset(unsigned int index, const char* filename, bool hard_cut)
 {
-	const char* name = projectm_get_preset_name(m_projectM, index);
-	cfg_preset_name = name;
-	projectm_free_string(name);
+	cfg_preset_name = filename;
+	auto d = zipfs::readfile(presets_dir + filename);
+	if(!d.empty())
+	{
+		projectm_load_preset_data(m_projectM, d.c_str(), !hard_cut);
+		return true;
+	}
+	return false;
 }
 
-void ui_element_instance_projectM::PresetSwitchedCallback(bool is_hard_cut, unsigned int index, void* user_data)
+bool ui_element_instance_projectM::CallbackLoadPreset(unsigned int index, const char* filename, bool hard_cut, void* user_data)
 {
 	auto ui = (ui_element_instance_projectM*)user_data;
-	ui->OnPresetSwitched(is_hard_cut, index);
+	return ui->LoadPreset(index, filename, hard_cut);
+}
+void ui_element_instance_projectM::CallbackLoadTexture(const char* texture_name, projectm_texture_load_data* data, void* user_data)
+{
+	auto ui = (ui_element_instance_projectM*)user_data;
+	return ui->LoadTexture(texture_name, data);
+}
+void ui_element_instance_projectM::LoadTexture(const char* texture_name, projectm_texture_load_data* data)
+{
+	auto d = zipfs::readfile(textures_dir + texture_name);
+	if(d.empty())
+		return;
+	data->data = (const unsigned char*)d.c_str();
 }
 
 void ui_element_instance_projectM::OnNCPaint(CRgnHandle rgn)
@@ -327,7 +389,7 @@ void ui_element_instance_projectM::OnPaint(CDCHandle)
 		glClearColor(0.0, 0.0, 0.0, 0.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		projectm_render_frame(m_projectM);
+		projectm_opengl_render_frame(m_projectM);
 
 		glFlush();
 
@@ -468,23 +530,27 @@ void ui_element_instance_projectM::ContextMenuCommand(int cmd)
 		break;
 	case ID_PRESET_LOCK:
 		cfg_preset_lock = !cfg_preset_lock;
-		projectm_lock_preset(m_projectM, cfg_preset_lock);
+		projectm_set_preset_locked(m_projectM, cfg_preset_lock);
 		break;
 	case ID_PRESET_SHUFFLE:
 		cfg_preset_shuffle = !cfg_preset_shuffle;
-		projectm_set_shuffle_enabled(m_projectM, cfg_preset_shuffle);
+		projectm_playlist_set_shuffle(m_playlist, cfg_preset_shuffle);
 		break;
 	case ID_PRESET_NEXT:
 		if(SetupGLContext())
-			projectm_select_next_preset(m_projectM, true);
+			projectm_playlist_play_next(m_playlist, true);
 		break;
 	case ID_PRESET_PREVIOUS:
 		if(SetupGLContext())
-			projectm_select_previous_preset(m_projectM, true);
+			projectm_playlist_play_previous(m_playlist, true);
 		break;
 	case ID_PRESET_RANDOM:
 		if(SetupGLContext())
-			projectm_select_random_preset(m_projectM, true);
+		{
+			projectm_playlist_set_shuffle(m_playlist, true);
+			projectm_playlist_play_next(m_playlist, true);
+			projectm_playlist_set_shuffle(m_playlist, cfg_preset_shuffle);
+		}
 		break;
 	case ID_DURATION_5:
 		cfg_preset_duration = 5;

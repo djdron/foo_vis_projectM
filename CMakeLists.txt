@@ -30,13 +30,17 @@ set(ARCH "")
 set(ARCH2 "-Win32")
 endif()
 
-find_package(libprojectM REQUIRED)
+find_package(projectM4 REQUIRED COMPONENTS Playlist)
 find_package(GLEW REQUIRED)
 find_package(ZLIB REQUIRED)
 
 file(GLOB SRCS_CXX "src/*.cpp")
 file(GLOB SRCS_H "src/*.h")
 file(GLOB RES_RC "src/*.rc")
+
+include_directories("zipfs")
+file(GLOB SRCS_ZIPFS_CCXX "zipfs/*.c" "zipfs/*.cpp")
+file(GLOB SRCS_ZIPFS_H "zipfs/*.h" "zipfs/*.hpp")
 
 set(FOOBAR_SDK_LIBRARIES
 	optimized "${FOOBAR_SDK_ROOT}/foobar2000/SDK/${ARCH}Release/foobar2000_SDK.lib"
@@ -53,5 +57,5 @@ set(FOOBAR_SDK_LIBRARIES
 	debug "${FOOBAR_SDK_ROOT}/libPPUI/${ARCH}Debug/libPPUI.lib"
 )
 
-add_library(foo_vis_projectM MODULE ${SRCS_CXX} ${SRCS_H} ${RES_RC})
-target_link_libraries(foo_vis_projectM ${FOOBAR_SDK_LIBRARIES} libprojectM::static GLEW::GLEW ZLIB::ZLIB)
+add_library(foo_vis_projectM MODULE ${SRCS_CXX} ${SRCS_H} ${RES_RC} ${SRCS_ZIPFS_CCXX} ${SRCS_ZIPFS_H})
+target_link_libraries(foo_vis_projectM ${FOOBAR_SDK_LIBRARIES} libprojectM::projectM libprojectM::playlist GLEW::GLEW ZLIB::ZLIB)
